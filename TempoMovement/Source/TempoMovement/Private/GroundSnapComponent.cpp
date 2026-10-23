@@ -100,6 +100,7 @@ void UGroundSnapComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 	}
 
 	FCollisionQueryParams Params(TEXT("GroundSnap"), false, GetOwner());
+	static const bool bLogGroundSnap = FPlatformMisc::GetEnvironmentVariable(TEXT("TEMPO_LOG_GROUND_SNAP")) == TEXT("1");
 
 	TArray<FHitResult> GroundHits;
 	for (const FVector2D& CornerOffset : CornerOffsets)
@@ -119,6 +120,12 @@ void UGroundSnapComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 			{
 				break;
 			}
+			if (bLogGroundSnap)
+			{
+				UE_LOG(LogTempoMovement, Warning, TEXT("GROUNDSNAP %s ignored movable %s.%s at z=%.2f m"),
+					*GetOwner()->GetName(), GroundHit.GetActor() ? *GroundHit.GetActor()->GetName() : TEXT("none"),
+					*HitComponent->GetName(), GroundHit.Location.Z / 100.0);
+			}
 			Params.AddIgnoredComponent(HitComponent);
 			GroundHit = FHitResult();
 		}
@@ -128,6 +135,23 @@ void UGroundSnapComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 			return;
 		}
 		GroundHits.Add(GroundHit);
+
+		// Debugging: TEMPO_LOG_GROUND_SNAP=1 logs each corner's hit whenever it changes.
+		if (bLogGroundSnap)
+		{
+			static TMap<FString, FString> LastHits;
+			const FString Key = FString::Printf(TEXT("%s/%d"), *GetOwner()->GetName(), GroundHits.Num() - 1);
+			const FString HitName = FString::Printf(TEXT("%s.%s"),
+				GroundHit.GetActor() ? *GroundHit.GetActor()->GetName() : TEXT("none"),
+				GroundHit.GetComponent() ? *GroundHit.GetComponent()->GetName() : TEXT("none"));
+			FString& Last = LastHits.FindOrAdd(Key);
+			if (Last != HitName)
+			{
+				UE_LOG(LogTempoMovement, Warning, TEXT("GROUNDSNAP %s corner %s hit %s at z=%.2f m (owner z=%.2f m)"),
+					*GetOwner()->GetName(), *Key, *HitName, GroundHit.Location.Z / 100.0, OwnerLocation.Z / 100.0);
+				Last = HitName;
+			}
+		}
 	}
 
 	// Moments of the ground hits, in XY relative to the owner's origin and Z relative to its height, for the
